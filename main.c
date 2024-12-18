@@ -5,6 +5,7 @@
 #include <time.h>
 #include <float.h>
 #include <time.h>
+#include <string.h>
 
 /** Generiert Trainingsdaten:
     inputs: [num_samples][5]
@@ -21,6 +22,8 @@ void generate_training_data(double inputs[][5], double targets[][1], int num_sam
         double distance = (rand() % 30) + 1;   // 1-30
         double bathrooms = (rand() % 3) + 1;   // 1-3
 
+        //3.0, 120.0, 2005.0, 15.0, 2.0
+
         double price = 50.0 * rooms + 2.0 * size + (2020 - year)*10.0 - distance*3.0 + 30.0 * bathrooms;
         double noise = (rand() % 201 - 100);
         price += noise;
@@ -35,17 +38,13 @@ void generate_training_data(double inputs[][5], double targets[][1], int num_sam
     }
 }
 
-void normalize_data(double inputs[][5], int num_samples, int num_features) {
-    double min[num_features];
-    double max[num_features];
-
-    // Initialisiere Min- und Max-Werte
+void normalize_data(double inputs[][5], int num_samples, int num_features, double min[], double max[]) {
     for (int i = 0; i < num_features; i++) {
         min[i] = DBL_MAX;
         max[i] = DBL_MIN;
     }
 
-    // Berechne Min- und Max-Werte für jedes Feature
+    // Min- und Max-Werte berechnen
     for (int i = 0; i < num_samples; i++) {
         for (int j = 0; j < num_features; j++) {
             if (inputs[i][j] < min[j]) min[j] = inputs[i][j];
@@ -53,17 +52,28 @@ void normalize_data(double inputs[][5], int num_samples, int num_features) {
         }
     }
 
-    // Wende Min-Max-Skalierung an
+    // Normalisierung der Daten
     for (int i = 0; i < num_samples; i++) {
         for (int j = 0; j < num_features; j++) {
-            if (max[j] - min[j] > 0) { // Vermeide Division durch Null
+            if (max[j] - min[j] > 0) {
                 inputs[i][j] = (inputs[i][j] - min[j]) / (max[j] - min[j]);
             } else {
-                inputs[i][j] = 0.0; // Falls alle Werte eines Features gleich sind
+                inputs[i][j] = 0.0; // Alle Werte gleich
             }
         }
     }
 }
+
+void normalize_single(double features[], int num_features, double min[], double max[]) {
+    for (int j = 0; j < num_features; j++) {
+        if (max[j] - min[j] > 0) {
+            features[j] = (features[j] - min[j]) / (max[j] - min[j]);
+        } else {
+            features[j] = 0.0;
+        }
+    }
+}
+
 
 /** Führt einen Forward/Backward-Pass für ein Batch durch und akkumuliert die Gewichtsänderungen. **/
 void train_parallel(NeuralNetwork *nn, double inputs[][5], double targets[][1], int start_idx, int end_idx, int batch_size, double lr) {
@@ -76,7 +86,11 @@ void train_parallel(NeuralNetwork *nn, double inputs[][5], double targets[][1], 
         double *bias_deltas_hidden = calloc(nn->hidden_size, sizeof(double));
         double *bias_deltas_output = calloc(nn->output_size, sizeof(double));
 
-        #pragma omp parallel for num_threads(1)
+        //#pragma omp parallel for num_threads(8)
+        #pragma omp parallel for num_threads(8) reduction(+:weight_deltas_input_hidden[:nn->input_size*nn->hidden_size], \
+                                                          weight_deltas_hidden_output[:nn->hidden_size*nn->output_size], \
+                                                          bias_deltas_hidden[:nn->hidden_size], \
+                                                          bias_deltas_output[:nn->output_size])
         for (int i = 0; i < batch_size; i++) {
             int sample_idx = start_idx + batch * batch_size + i;
             double hidden[nn->hidden_size];
@@ -106,20 +120,20 @@ void train_parallel(NeuralNetwork *nn, double inputs[][5], double targets[][1], 
             // Gradienten-Update Output-Layer
             for (int j = 0; j < nn->output_size; j++) {
                 for (int k = 0; k < nn->hidden_size; k++) {
-                    #pragma omp atomic
+                    //#pragma omp atomic
                     weight_deltas_hidden_output[j * nn->hidden_size + k] += output_errors[j] * hidden[k];
                 }
-                #pragma omp atomic
+                //#pragma omp atomic
                 bias_deltas_output[j] += output_errors[j];
             }
 
             // Gradienten-Update Hidden-Layer
             for (int j = 0; j < nn->hidden_size; j++) {
                 for (int k = 0; k < nn->input_size; k++) {
-                    #pragma omp atomic
+                    //#pragma omp atomic
                     weight_deltas_input_hidden[j * nn->input_size + k] += hidden_errors[j] * inputs[sample_idx][k];
                 }
-                #pragma omp atomic
+                //#pragma omp atomic
                 bias_deltas_hidden[j] += hidden_errors[j];
             }
         }
@@ -224,7 +238,7 @@ void k_fold_cross_validation(double inputs[][5], double targets[][1], int num_sa
     printf("Durchschnittlicher Test-MSE über alle Folds: %.6f\n", avg_mse);
 }
 
-void train_and_predict(NeuralNetwork *nn, double inputs[][5], double targets[][1], int num_samples, int epochs, int batch_size, double lr, double house_features[5]) {
+void train_and_predict(NeuralNetwork *nn, double inputs[][5], double targets[][1], int num_samples, int epochs, int batch_size, double lr, double house_features[5], double house_params[5]) {
     printf("\nTraining the neural network on the full dataset...\n");
 
     // Training
@@ -248,7 +262,7 @@ void train_and_predict(NeuralNetwork *nn, double inputs[][5], double targets[][1
 
     printf("\nPrediction for the given house:\n");
     printf("Rooms: %.2f, Size: %.2f, Year: %.2f, Distance: %.2f, Bathrooms: %.2f\n",
-           house_features[0], house_features[1], house_features[2], house_features[3], house_features[4]);
+           house_params[0], house_params[1], house_params[2], house_params[3], house_params[4]);
     printf("Predicted Price: %.3f\n", output[0]);
 }
 
@@ -258,36 +272,39 @@ int main() {
     const int num_samples = 100000;
     double inputs[num_samples][5];
     double targets[num_samples][1];
+    double min[5], max[5];  // Min- und Max-Werte für die Normalisierung
+    double house_params[5]; // Nicht normalisierte Werte für das Zielhaus
 
-    // Daten generieren
+    // Trainingsdaten generieren
     generate_training_data(inputs, targets, num_samples);
-    normalize_data(inputs, num_samples, 5);
+
+    // Zielhausdaten speichern (vor Normalisierung)
+    memcpy(house_params, inputs[0], 5 * sizeof(double));
+
+    // Daten normalisieren und Min-/Max-Werte speichern
+    normalize_data(inputs, num_samples, 5, min, max);
+
+    // Zielhausdaten mit den gleichen Min-/Max-Werten normalisieren
+    normalize_single(house_params, 5, min, max);
 
     // Daten mischen
     shuffle_data(inputs, targets, num_samples);
 
-    // House to predict
-    double house_features[5] = {3.0, 120.0, 2005.0, 15.0, 2.0};
-    normalize_data(&house_features, 1, 5);
-
-    // Parameter
-    int k = 5;          
-    int epochs = 1000;   
+    // Parameter für das Training
+    int epochs = 1000;
     int batch_size = 4096;
     double lr = 0.001;
 
-    // Cross Validation
-    // k_fold_cross_validation(inputs, targets, num_samples, k, epochs, batch_size, lr);
-
+    // Neural Network initialisieren
     NeuralNetwork nn;
     initialize_network(&nn, 5, 10, 1);
 
-    // Trainiere und mache eine Vorhersage
-    double start_time, end_time;
+    // Training und Vorhersage
     struct timespec start_time_spec, end_time_spec;
     clock_gettime(CLOCK_MONOTONIC, &start_time_spec);
-    train_and_predict(&nn, inputs, targets, num_samples, epochs, batch_size, lr, house_features);
+    train_and_predict(&nn, inputs, targets, num_samples, epochs, batch_size, lr, house_params, house_params);
     clock_gettime(CLOCK_MONOTONIC, &end_time_spec);
+
     double duration = (end_time_spec.tv_sec - start_time_spec.tv_sec) +
                       (end_time_spec.tv_nsec - start_time_spec.tv_nsec) / 1e9;
     printf("\nDuration of train_and_predict: %.2f seconds\n", duration);
