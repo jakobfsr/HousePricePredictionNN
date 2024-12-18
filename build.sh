@@ -1,18 +1,23 @@
 #!/usr/bin/env bash
 set -e
 
-# Dieses Skript erstellt ein Build-Verzeichnis,
-# führt CMake aus, kompiliert das Projekt und führt es anschließend aus.
+# Prüfen, ob mindestens drei Argumente übergeben wurden
+if [ $# -lt 3 ]; then
+    echo "Usage: $0 <cross-val|train> <batch_size> <num_threads>"
+    exit 1
+fi
 
-# Falls ein "build"-Verzeichnis existiert, dieses zunächst entfernen:
+# Build-Verzeichnis vorbereiten
 if [ -d "build" ]; then
     rm -rf build
 fi
 
 mkdir build
 cd build
+
+# CMake und Make ausführen
 cmake ..
 make -j4
 
-# Nach erfolgreichem Build ausführen
-./nn_example
+# Programm mit den Argumenten starten
+./nn_example "$1" "$2" "$3"

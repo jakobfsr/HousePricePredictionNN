@@ -79,8 +79,8 @@ void train_parallel(NeuralNetwork *nn, double inputs[][5], double targets[][1], 
         double *bias_deltas_hidden = calloc(nn->hidden_size, sizeof(double));
         double *bias_deltas_output = calloc(nn->output_size, sizeof(double));
 
-        // paralleization with batch size
-        #pragma omp parallel for num_threads(8) reduction(+:weight_deltas_input_hidden[:nn->input_size*nn->hidden_size], \
+        // paralleization with batch size ( num_threads(num_threads))
+        #pragma omp parallel for reduction(+:weight_deltas_input_hidden[:nn->input_size*nn->hidden_size], \
                                                           weight_deltas_hidden_output[:nn->hidden_size*nn->output_size], \
                                                           bias_deltas_hidden[:nn->hidden_size], \
                                                           bias_deltas_output[:nn->output_size])
@@ -179,9 +179,6 @@ void k_fold_cross_validation(double inputs[][5], double targets[][1], int num_sa
         initialize_network(&nn, 5, 10, 1);
 
         for (int epoch = 0; epoch < epochs; epoch++) {
-            if(epoch % 100 == 0){
-                printf("Epoch %d/%d", epoch, epochs);
-            }
             // first part of train set
             if (test_start > 0) {
                 train_parallel(&nn, inputs, targets, 0, test_start, batch_size, lr);
@@ -233,50 +230,62 @@ void train_and_predict(NeuralNetwork *nn, double inputs[][5], double targets[][1
     printf("Predicted Price: %.3f\n", output[0]);
 }
 
-int main() {
+int main(int argc, char *argv[]) {
+    if (argc < 4) {
+        printf("Usage: %s <cross-val|train> <batch_size> <num_threads>\n", argv[0]);
+        return 1;
+    }
     srand(time(NULL));
 
     const int num_samples = 100000;
     double inputs[num_samples][5];
     double targets[num_samples][1];
     double min[5], max[5];  // value for normalization
-    
 
+    int num_threads = atoi(argv[3]);
+    omp_set_num_threads(num_threads);
+    
     // generate training data
     generate_training_data(inputs, targets, num_samples);
-
-    // get data of first
-    double house_params[5] = {4.0, 120.0, 2010.0, 10.0, 2.0}; // not normalized values for house to predict
-    double house_params_normalized[5];
-    memcpy(house_params_normalized, house_params, 5 * sizeof(double));
 
     // normalize data
     normalize_data(inputs, num_samples, 5, min, max);
 
-    // normalization of data
-    normalize_single(house_params_normalized, 5, min, max);
-
     // training parameters
     int epochs = 1000;
-    int batch_size = 1024; //4096;
+    int batch_size = atoi(argv[2]);//1024; //4096;
     double lr = 0.001;
-    int k = 5;
+
 
     // perform cross validation to evaluate model quality
-    k_fold_cross_validation(inputs, targets, num_samples, k, epochs, batch_size, lr);
-
-    /*NeuralNetwork nn;
-    initialize_network(&nn, 5, 10, 1);
-
+    if(strcmp(argv[1], "train")){
+        int k = 5;
+        k_fold_cross_validation(inputs, targets, num_samples, k, epochs, batch_size, lr);
+    }
+    
+    
     // training and prediction of a single house (to show parallelization)
-    struct timespec start_time_spec, end_time_spec;
-    clock_gettime(CLOCK_MONOTONIC, &start_time_spec);
-    train_and_predict(&nn, inputs, targets, num_samples, epochs, batch_size, lr, house_params_normalized, house_params);
-    clock_gettime(CLOCK_MONOTONIC, &end_time_spec);
+    if(strcmp(argv[1], "cross-val")){
+        // get data of wanted house
+        double house_params[5] = {4.0, 120.0, 2010.0, 10.0, 2.0}; // not normalized values for house to predict
+        double house_params_normalized[5];
+        memcpy(house_params_normalized, house_params, 5 * sizeof(double));
 
-    double duration = (end_time_spec.tv_sec - start_time_spec.tv_sec) +
-                      (end_time_spec.tv_nsec - start_time_spec.tv_nsec) / 1e9;
-    printf("\nDuration of train_and_predict: %.2f seconds\n", duration);*/
+        // normalization of data
+        normalize_single(house_params_normalized, 5, min, max);
+
+        NeuralNetwork nn;
+        initialize_network(&nn, 5, 10, 1);
+        
+        struct timespec start_time_spec, end_time_spec;
+        clock_gettime(CLOCK_MONOTONIC, &start_time_spec);
+        train_and_predict(&nn, inputs, targets, num_samples, epochs, batch_size, lr, house_params_normalized, house_params);
+        clock_gettime(CLOCK_MONOTONIC, &end_time_spec);
+
+        double duration = (end_time_spec.tv_sec - start_time_spec.tv_sec) +
+                        (end_time_spec.tv_nsec - start_time_spec.tv_nsec) / 1e9;
+        printf("\nDuration of train_and_predict: %.2f seconds\n", duration);
+    }
 
     return 0;
 }
