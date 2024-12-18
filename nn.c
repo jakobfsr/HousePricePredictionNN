@@ -32,7 +32,7 @@ void initialize_network(NeuralNetwork *nn, int input_size, int hidden_size, int 
 }
 
 void forward(NeuralNetwork *nn, double *inputs, double *hidden, double *outputs) {
-    // Hidden-Layer mit Sigmoid
+    // hidden layer calculation
     for (int i = 0; i < nn->hidden_size; i++) {
         double sum = nn->hidden_bias[i];
         for (int j = 0; j < nn->input_size; j++) {
@@ -41,13 +41,13 @@ void forward(NeuralNetwork *nn, double *inputs, double *hidden, double *outputs)
         hidden[i] = sigmoid(sum);
     }
 
-    // Output-Layer ohne Sigmoid (lineare Ausgabe)
+    // output layer calculation
     for (int i = 0; i < nn->output_size; i++) {
         double sum = nn->output_bias[i];
         for (int j = 0; j < nn->hidden_size; j++) {
             sum += hidden[j] * nn->weights_hidden_output[i * nn->hidden_size + j];
         }
-        outputs[i] = sum; // lineare Ausgabe
+        outputs[i] = sum;
     }
 }
 
