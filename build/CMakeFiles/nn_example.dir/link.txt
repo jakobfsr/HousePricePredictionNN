@@ -1,0 +1,1 @@
+/usr/bin/cc  -Wall -O2 -fopenmp CMakeFiles/nn_example.dir/main.c.o CMakeFiles/nn_example.dir/nn.c.o -o nn_example  -lm /usr/lib/gcc/x86_64-redhat-linux/14/libgomp.so /usr/lib64/libpthread.a
