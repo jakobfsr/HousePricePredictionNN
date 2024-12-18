@@ -5,6 +5,7 @@
 #include <time.h>
 #include <float.h>
 #include <time.h>
+#include <math.h>
 #include <string.h>
 
 /** generates training data**/
@@ -79,7 +80,7 @@ void train_parallel(NeuralNetwork *nn, double inputs[][5], double targets[][1], 
         double *bias_deltas_output = calloc(nn->output_size, sizeof(double));
 
         // paralleization with batch size
-        #pragma omp parallel for num_threads(1) reduction(+:weight_deltas_input_hidden[:nn->input_size*nn->hidden_size], \
+        #pragma omp parallel for num_threads(8) reduction(+:weight_deltas_input_hidden[:nn->input_size*nn->hidden_size], \
                                                           weight_deltas_hidden_output[:nn->hidden_size*nn->output_size], \
                                                           bias_deltas_hidden[:nn->hidden_size], \
                                                           bias_deltas_output[:nn->output_size])
@@ -158,7 +159,7 @@ double evaluate(NeuralNetwork *nn, double inputs[][5], double targets[][1], int 
         double sq_error = error * error;
         mse += sq_error;
         if(i % 2500 == 0){
-            printf("Predicted Value: %.3f, Actual Value: %.3f, Squared Error: %.3f\n", output[0], targets[i][0], sq_error);
+            printf("Predicted Value: %.3f, Actual Value: %.3f, Absolute Error: %.3f\n", output[0], targets[i][0], fabs(error));
         }
     }
     return mse / (double)count;
@@ -195,6 +196,7 @@ void k_fold_cross_validation(double inputs[][5], double targets[][1], int num_sa
         total_test_mse += mse;
 
         printf("Fold %d: Test MSE = %.6f\n", fold, mse);
+        printf("Average Absolute Error: %.2fk\n", sqrt(mse)*1000);
 
         free_network(&nn);
     }
@@ -256,7 +258,7 @@ int main() {
 
     // training parameters
     int epochs = 1000;
-    int batch_size = 16; //4096;
+    int batch_size = 1024; //4096;
     double lr = 0.001;
     int k = 5;
 

@@ -1,0 +1,3 @@
+/home/jakob/Documents/University/24_25_WiSe/HPC/homeprice_crossval/build/CMakeFiles/nn_example.dir
+/home/jakob/Documents/University/24_25_WiSe/HPC/homeprice_crossval/build/CMakeFiles/edit_cache.dir
+/home/jakob/Documents/University/24_25_WiSe/HPC/homeprice_crossval/build/CMakeFiles/rebuild_cache.dir
